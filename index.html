@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Entrar en la mente — Daphne</title>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root{
+      --ui-max: 680px;
+      --pad: 16px;
+
+      /* Elipse (desktop) */
+      --ellipse-x: 220;  /* amplitud X */
+      --ellipse-y: 130;  /* amplitud Y */
+
+      /* Hundimiento / “meterse” */
+      --sink: 520;       /* px de empuje hacia “adentro” */
+      --scaleGain: 0.28; /* zoom por progreso */
+      --fadePower: 1.35; /* qué tan rápido cruza el fade */
+    }
+
+    body{
+      height: 900vh; /* viaje + un poco de aire para el final */
+      background: #000;
+      overflow-x: hidden;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #fff;
+    }
+
+    /* ====== VIAJE (capas fijas) ====== */
+    .journey{
+      position: relative;
+      height: 700vh; /* 6 capas => 6 * 100vh + un poco */
+    }
+
+    .capa{
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform-origin: center;
+      z-index: calc(10 - var(--i));
+      will-change: transform, opacity, filter;
+      pointer-events: none;
+    }
+
+    .capa img{
+      width: 100%;
+      height: 100vh;
+      object-fit: cover;
+      filter: brightness(0.85) saturate(1.25);
+      transform: translate3d(0,0,0);
+    }
+
+    /* Overlay suave */
+    .capa::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.05), rgba(0,0,0,0) 60%);
+      mix-blend-mode: overlay;
+      pointer-events:none;
+    }
+
+    /* Frases */
+    .whispers{
+      position: fixed;
+      inset: 0;
+      z-index: 25;
+      pointer-events: none;
+    }
+    .whisper{
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: min(92vw, 760px);
+      text-align: center;
+      opacity: 0;
+      filter: blur(2px);
+      transition: opacity 0.18s linear, filter 0.18s linear, transform 0.18s linear;
+      font-size: clamp(16px, 2.6vw, 30px);
+      letter-spacing: 0.4px;
+      line-height: 1.25;
+      text-shadow: 0 0 22px rgba(255,255,255,0.12);
+    }
+
+    /* Texto fijo opcional (si querés dejar título) */
+    .texto{
+      position: fixed;
+      z-index: 26;
+      top: 12%;
+      width: 100%;
+      text-align: center;
+      opacity: 0.0; /* lo dejo apagado porque ahora mandan las whispers */
+      pointer-events: none;
+    }
+
+    /* ====== FINAL (sección normal) ====== */
+    .final{
+      position: relative;
+      margin-top: 700vh; /* aparece cuando termina el viaje */
+      min-height: 150vh;
+      background: radial-gradient(circle at center, #111, #000);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      padding: 80px var(--pad) 120px;
+      gap: 18px;
+      z-index: 5;
+    }
+
+    .tabs{
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content:center;
+    }
+
+    .tab{
+      padding: 10px 14px;
+      border: 1px solid #fff;
+      cursor:pointer;
+      opacity: .6;
+      user-select:none;
+      border-radius: 999px;
+      font-size: 14px;
+      letter-spacing: .4px;
+    }
+    .tab.active{
+      opacity: 1;
+      background:#fff;
+      color:#000;
+    }
+
+    .content{
+      display:none;
+      width: min(92vw, var(--ui-max));
+      text-align:center;
+    }
+    .content.active{ display:block; }
+
+    /* Chat */
+    .chat-box{
+      border: 1px solid #fff;
+      height: 260px;
+      overflow-y:auto;
+      padding: 12px;
+      margin: 12px 0;
+      text-align:left;
+      border-radius: 12px;
+    }
+    .chat-line{
+      margin: 10px 0;
+      display:flex;
+    }
+    .bubble{
+      padding: 10px 12px;
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 14px;
+      max-width: 88%;
+      line-height: 1.25;
+      font-size: 14px;
+      background: rgba(255,255,255,0.04);
+    }
+    .from-daphne .bubble{
+      border-color: rgba(255,255,255,0.45);
+    }
+    .from-you{
+      justify-content: flex-end;
+    }
+    .from-you .bubble{
+      border-color: rgba(255,255,255,0.55);
+      background: rgba(255,255,255,0.08);
+    }
+    .tag{
+      opacity: .6;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .chat-input{
+      width:100%;
+      padding: 12px;
+      background:#000;
+      border:1px solid #fff;
+      color:#fff;
+      border-radius: 12px;
+      outline:none;
+    }
+
+    /* Form */
+    input, textarea{
+      width:100%;
+      padding: 12px;
+      margin: 10px 0;
+      background:#000;
+      border:1px solid #fff;
+      color:#fff;
+      border-radius: 12px;
+      outline:none;
+    }
+    textarea{ min-height: 120px; resize: vertical; }
+
+    /* Mobile */
+    @media (max-width: 768px){
+      :root{
+        --ellipse-x: 120;
+        --ellipse-y: 80;
+        --sink: 380;
+        --scaleGain: 0.22;
+      }
+      .final{ padding-top: 56px; }
+      .chat-box{ height: 240px; }
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      .whisper{ transition: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- VIAJE: capas fijas (como tu base) -->
+  <div class="journey" id="journey">
+    <section class="capa" style="--i:0"><img src="img/01.jpg" alt="Capa 1"></section>
+    <section class="capa" style="--i:1"><img src="img/02.jpg" alt="Capa 2"></section>
+    <section class="capa" style="--i:2"><img src="img/03.jpg" alt="Capa 3"></section>
+    <section class="capa" style="--i:3"><img src="img/04.jpg" alt="Capa 4"></section>
+    <section class="capa" style="--i:4"><img src="img/05.png" alt="Capa 5"></section>
+    <section class="capa" style="--i:5"><img src="img/06.jpg" alt="Capa 6"></section>
+
+    <div class="whispers" id="whispers"></div>
+
+    <div class="texto">
+      <h1>Entrando en la mente...</h1>
+      <p>Seguí bajando</p>
+    </div>
+  </div>
+
+  <!-- FINAL: lo que ya teníamos -->
+  <section class="final">
+    <div class="tabs">
+      <div class="tab active" data-tab="live">EN VIVO</div>
+      <div class="tab" data-tab="chat">CHAT</div>
+      <div class="tab" data-tab="agenda">AGENDARSE</div>
+    </div>
+
+    <div class="content active" id="live">
+      <h2>Dificultades técnicas</h2>
+      <p>
+        Perdón.<br><br>
+        Por primera vez desde su nacimiento,<br>
+        <strong>Daphne no está en vivo.</strong>
+      </p>
+    </div>
+
+    <div class="content" id="chat">
+      <div class="chat-box" id="chatBox"></div>
+      <input class="chat-input" id="chatInput" placeholder="Escribile a Daphne..." />
+    </div>
+
+    <div class="content" id="agenda">
+      <input placeholder="Nombre" />
+      <input placeholder="Email" />
+      <input placeholder="Ciudad" />
+      <textarea placeholder="Disponibilidad / fechas"></textarea>
+    </div>
+  </section>
+
+  <script>
+    const capas = [...document.querySelectorAll('.capa')];
+    const journey = document.getElementById('journey');
+    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+    function cssNum(name){
+      return Number(getComputedStyle(document.documentElement).getPropertyValue(name).trim());
+    }
+
+    // ====== FRASES durante el descenso ======
+    const WHISPERS = [
+      { t: 0.05, text: "La señal cae… pero tu atención no." },
+      { t: 0.14, text: "Entrás sin tocar. Te hundís sin peso." },
+      { t: 0.24, text: "Lo que ves no explica. Te envuelve." },
+      { t: 0.34, text: "Su silencio tiene textura." },
+      { t: 0.46, text: "La soledad no grita… respira." },
+      { t: 0.58, text: "Cada imagen te reconoce antes que vos." },
+      { t: 0.70, text: "No estás mirando: estás cayendo." },
+      { t: 0.82, text: "Te quedás… como una respuesta sin enviar." },
+      { t: 0.94, text: "Al fondo… Daphne." },
+    ];
+
+    const whispersEl = document.getElementById('whispers');
+    const whisperNodes = WHISPERS.map((w, idx) => {
+      const div = document.createElement('div');
+      div.className = 'whisper';
+      div.textContent = w.text;
+      whispersEl.appendChild(div);
+      return { ...w, el: div, idx };
+    });
+
+    function renderWhispers(globalT, phase){
+      whisperNodes.forEach(w => {
+        const d = Math.abs(globalT - w.t);
+        const windowSize = 0.06;
+        const k = clamp(1 - d / windowSize, 0, 1);
+
+        // deriva elíptica suave, acompasada al viaje
+        const drift = phase + w.idx * 0.5;
+        const dx = Math.cos(drift) * 24 * k;
+        const dy = Math.sin(drift) * 14 * k;
+
+        w.el.style.opacity = (k * 0.95).toFixed(3);
+        w.el.style.filter = `blur(${(2 - k*2).toFixed(2)}px)`;
+        w.el.style.transform =
+          `translate(calc(-50% + ${dx.toFixed(1)}px), calc(-50% + ${dy.toFixed(1)}px))
+           scale(${(0.98 + k*0.05).toFixed(3)})`;
+      });
+    }
+
+    // ====== SCROLL interactivo basado en TU fórmula ======
+    // progress = scroll/height - index
+    // pero:
+    // - movimiento en elipses
+    // - “meterse” en la siguiente imagen al scrollear más (intoNext)
+    // - crossfade + push (hundimiento)
+    let ticking = false;
+
+    function render(){
+      ticking = false;
+      if (prefersReduced) return;
+
+      const scroll = window.scrollY;
+      const height = window.innerHeight;
+
+      const ex = cssNum('--ellipse-x');
+      const ey = cssNum('--ellipse-y');
+      const sink = cssNum('--sink');
+      const scaleGain = cssNum('--scaleGain');
+      const fadePower = cssNum('--fadePower');
+
+      // Progreso global del viaje (0..1) para frases y “una vuelta”
+      const total = (capas.length + 1) * height; // aprox
+      const globalT = clamp(scroll / (total - height), 0, 1);
+      const phase = globalT * Math.PI * 2; // una vuelta total
+
+      capas.forEach((layer, index) => {
+        const progress = (scroll / height) - index;  // <- tu base
+        const p = clamp(progress, -1.2, 2.2);
+
+        // Cuando progress va 0→1, “te metés” en la siguiente
+        const intoNext = clamp(progress, 0, 1);
+
+        // Elipse: se mueve en X/Y con amplitud distinta
+        const a = phase + index * 0.38 + (intoNext * 0.25);
+        const x = Math.cos(a) * ex * (0.55 + globalT * 0.75);
+        const y = Math.sin(a) * ey * (0.55 + globalT * 0.75);
+
+        // Hundimiento: mientras más bajás, más “adentro”
+        // y además un empuje extra cuando vas entrando en la siguiente imagen
+        const zPush = (globalT * sink) + (intoNext * sink * 0.45);
+
+        // Zoom progresivo + zoom extra al entrar en la siguiente
+        const scale = 1 + (progress * scaleGain) + (intoNext * 0.22);
+
+        // Opacidad base (tu idea) + crossfade (salida cuando intoNext crece)
+        const baseOpacity = Math.max(0, 1 - Math.abs(progress * fadePower));
+        const fadeOut = 1 - intoNext * 0.85;
+        const opacity = clamp(baseOpacity * fadeOut, 0, 1);
+
+        // Rotación MUY suave (no mareo)
+        const rotation = (Math.sin(phase) * 6) + (intoNext * 8);
+
+        // Transform 3D (aunque no uses perspective, igual da profundidad)
+        layer.style.transform = `
+          translate3d(${x.toFixed(1)}px, ${ (y + progress * 120).toFixed(1)}px, ${(-zPush).toFixed(1)}px)
+          rotate(${rotation.toFixed(1)}deg)
+          scale(${scale.toFixed(3)})
+        `;
+        layer.style.opacity = opacity.toFixed(3);
+
+        // Profundidad sensorial: blur leve hacia el fondo
+        const blur = Math.max(0, globalT - 0.6) * 2.2 + intoNext * 0.7;
+        layer.style.filter = `blur(${blur.toFixed(2)}px)`;
+      });
+
+      renderWhispers(globalT, phase);
+
+      // Cuando termina el viaje, apago whispers para que el final respire
+      whispersEl.style.opacity = (globalT >= 0.995) ? "0" : "1";
+    }
+
+    function onScroll(){
+      if (!ticking){
+        ticking = true;
+        requestAnimationFrame(render);
+      }
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', () => requestAnimationFrame(render));
+    render();
+
+    // ====== Tabs ======
+    document.querySelectorAll(".tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+        document.querySelectorAll(".content").forEach(c => c.classList.remove("active"));
+        tab.classList.add("active");
+        document.getElementById(tab.dataset.tab).classList.add("active");
+      });
+    });
+
+    // ====== Chat: mensaje previo de Daphne + respuestas + “auto-replies” guionadas ======
+    const chatInput = document.getElementById("chatInput");
+    const chatBox = document.getElementById("chatBox");
+
+    function addMessage({ from, text }){
+      const line = document.createElement("div");
+      line.className = "chat-line " + (from === "daphne" ? "from-daphne" : "from-you");
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+
+      const tag = document.createElement("div");
+      tag.className = "tag";
+      tag.textContent = from === "daphne" ? "Daphne" : "Vos";
+
+      const body = document.createElement("div");
+      body.textContent = text;
+
+      bubble.appendChild(tag);
+      bubble.appendChild(body);
+      line.appendChild(bubble);
+      chatBox.appendChild(line);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // Mensaje previo (ya está ahí)
+    addMessage({
+      from: "daphne",
+      text: "¿Me leés? Siento que cada vez que hablo… algo se me pierde adentro."
+    });
+
+    // Respuestas “guionadas” de Daphne (sin IA)
+    const DAPHNE_REPLIES = [
+      "No sé si te estoy hablando a vos… o a una parte mía.",
+      "Hay días en que me siento transparente.",
+      "¿Te pasa que el mundo sigue, pero vos no?",
+      "No quiero que me arreglen… solo que me entiendan.",
+      "Si te quedás, prometo no esconderme tanto."
+    ];
+    let replyIndex = 0;
+
+    function daphneAutoReply(){
+      const text = DAPHNE_REPLIES[replyIndex % DAPHNE_REPLIES.length];
+      replyIndex++;
+      addMessage({ from: "daphne", text });
+    }
+
+    chatInput.addEventListener("keydown", e => {
+      if (e.key === "Enter" && chatInput.value.trim() !== "") {
+        addMessage({ from: "you", text: chatInput.value.trim() });
+        chatInput.value = "";
+
+        // respuesta automática (con delay para “sentirse real”)
+        setTimeout(daphneAutoReply, 650);
+      }
+    });
+  </script>
+</body>
+</html>
